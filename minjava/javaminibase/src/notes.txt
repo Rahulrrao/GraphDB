@@ -1,0 +1,317 @@
+CSE 510: Phase 1
+ 
+Team members – Rahul Rao, Ravikiran Tangirala, Revanth Patil, Ayush Sanyal, Arun Srivatsa Ramesh
+ 
+
+Abstract:
+In this phase we intend to have understanding of minibase implementation. This report provides an overview of how the modules work in minibase and how each of the modules are tested. Some experiments are conducted on the interactive tests to get insights on how btree is implemented.
+ 
+
+
+
+Buffer Manager:
+_____________________________________________
+The buffer manager is responsible to cache the pages to main memory from the DB. These pages are used by the higher modules such as heap file, access method and btree. They can perform read, write, allocate, and deallocate operations on the pages. Buffer manager uses underlying DB class to perform operations on the disk.
+
+
+
+Buffer Manager tests
+________________________________
+****Test 1*****
+This tests the does following things.
+-> First get the total number of unpinned pages in the memory using the call.SystemDefs.JavabaseBM.getNumUnpinnedBuffers()
+-> Allocate new pages:
+    Allocate new pages on the disk using SystemDefs.JavabaseBM.newPage( pg, numPages ) 
+function call.
+-> On each of the page the data(pid + 99999) is written using Convert.setIntValue(data, 0,pg.getpage())
+
+-> After that traverse through each page the data is written(pinpage) and read(unpin page) to confirm that read has occurred properly. Reading is done with Convert.getIntValue. Check if the read data matches with pid+99999. 
+-> Free all the pages again
+*****Test 2*****
+This test for some common illegal operations.
+
+-> After getting the total number of unpinned frames available in the memory with getNumUnpnnedBuffers, try to allocate one more than the number of pages available using 
+SystemDefs.JavabaseBM.newPage. After wards try to pin all the pages, the test fails as expected. 
+
+-> Next illegal operation is to unpin the page that is not in the buffer pool. Try to unpin the last pid page that was over allocated. This results in hashEntryNotFoundException as expected.  
+-> Free all the pages again.
+
+****Test 3******
+Tests the internals of the buffer manager.
+Here total of 60 page objects are created.
+Each page is pinned, the data is assigned and, except for pages pid!= 12mod20, unpinned in the end.
+Each time the page is pinned the pin count is increased.
+
+Now each of the page is again pinned and unpinned. Only those pages that were left pinned,  are unpinned twice.
+
+Disk Space manager.
+_____________________________________________
+Disk Space manager is responsible for operations on disk such as allocations and deallocation. The complete data base is actually a single linux file. The disk space manager helps create logical
+files for the higher modules such as heap and btree.
+
+
+DBTest tests
+________________________________
+*****Test1*******
+Add some File Entry:
+ The whole database is one unix file. But the DB class from disk manager lets you create logical files. In this test we are creating 6 files and allocating pages on those files. Allocate a run of pages on the disk. Allocate 30 pages from the run start. Write “A”+i on 20 of those pages. Deallocate the rest of 10 pages.
+
+
+
+Test 1 – This test creates a new database and does some tests of normal operations. Create a file with file name and start pid. Allocate a run of pages and write data on 20 of them. Deallocate the remaining 10 pages. DB maintains a space map for each page with bit “0” indicating that the page is free and “1” indicating that the page is allocated.
+
+Test 2 – Delete some of the file entries previously added. Read the pages from the remaining file entries and validate if the information is read correctly.
+ 
+Test 3 – This test validates some of the error conditions like look up a deleted file entry, try to delete a deleted entry again, try to delete a nonexistent file entry, look up a nonexistent file entry, try to add a file entry that's already there, try to add a file entry whose name is too long, try to allocate a run of pages that's too long, try to allocate a negative run of pages, try to deallocate a negative run of pages.
+ 
+Test 4 – This is for testing some of the boundary conditions. It is made sure that no pages are left pinned by the disk manager in the beginning of this test. All the pages are allocated after dB overhead is taken in account. Attempt to allocate one more page after this will cause an exception as expected.
+ 
+Next some of the pages are freed by deallocating by specifying the start pid and the run size. Allocate some of the just-freed pages. Next, free two continued run of the allocated pages i.e., 11-17 and 18-28. Allocate back the number of pages just freed.
+ 
+Add enough file entries that the directory must surpass a page. Try to allocate more pages than it is available which fails as expected. Allocate exactly the number of pages available which is 6. Now try to allocate one more page which fails as expected as all pages are claimed.
+
+
+*****Test2*******
+Out of the 6 logical files that were created in test1 delete 3 files using SystemDefs.JavabaseDB.delete_file_entry(name);
+Check if the last 3 files are still present pgid = SystemDefs.JavabaseDB.get_file_entry(name);
+Read from the pages the 20 pages that we wrote in test1. Also, check if the read matches from what we wrote.
+
+
+******Test3********
+Test3 for some error conditions.
+Try to get the deleted file. Results in error as expected.
+Try to delete file again. Results in error as expected.
+try to create a file size greater than 50.
+
+
+
+
+******Test4********
+Test 4 tests some boundary conditions.
+
+
+
+B+ Tree
+_____________________________________________
+B+ tree is one of the access methods for the mini base. This module has the implementation of the b+tree. Btree node page contains the keys and their corresponding record id. All the operations of the btree such as insertion, search and deletion are supported.
+
+
+
+BTree Tests
+___________________________________________
+Before the Btree is constructed, a btree file is constructed with the name “AAA”+postfix.
+All the operations are done on one particular btree file. We will see later that we can create new file, modify btree structure and delete the file.
+
+***************Choices*************
+
+Choice 0:
+This is a misnomer, we are not deleting any record or file. Here we are simply creating a file by setting the parameter naivedeletion for btree to be true.
+In naive deletion, when the number of records in a page fall below a the threshold of the btee, it does not make an attempt to merge and redistribute.
+
+Choice 1:
+Again this is a misnomer, we are creating a new file with the option full deletion. In contrast to naive deletion, we redistribute and merge the records when they are below the threshold of the tree.
+
+
+choice 2:
+Print b+ tree structure.
+It displays the level wise structure of the tree. It displays in this format
+
+|Level  | page id|   
+|      1|	6|
+|      2|	4|
+|      2|	5|
+|      2|	7|
+|      2|	8|
+|      2|	9|
+|      2|      10|
+|      2|      11|
+
+In each level the nodes are displayed from left to right. We will see later that each page id will contain information about Left Link, key and pageId information.
+BT.printBTree(file.getHeaderPage());
+
+choice 3:
+Print all leaf pages. In B+ Tree all the keys are stored in the leaf nodes and they are sorted from left to right. Each leaf node page has information such as left Link, right link and (key,(page no, slotno))
+
+Choice 4:
+Page to print: 
+Given page id this choice shows the information about the pageId, left page child and right page child and the keys stored in the current page.
+PageId(6)
+Left Link      : 34
+Right Link     : 36
+0 (key, [pageNo, slotNo]):   (930,  [ 930 930 ] )
+1 (key, [pageNo, slotNo]):   (931,  [ 931 931 ] )
+2 (key, [pageNo, slotNo]):   (932,  [ 932 932 ] )
+3 (key, [pageNo, slotNo]):   (933,  [ 933 933 ] )
+BT.printPage(new PageId(num), keyType);
+
+Choice 5:
+Insert a record:
+In the current file it accepts the key to be inserted. Inserts the record into the heap file and the btree file with the record ID(page no, key).
+
+file.insert(new IntegerKey(key), rid);
+During insertion, the record is first inserted in the heap file then the entry is made in the btree file. The btree  insertion happens as shown in the pictures.
+
+
+
+Choice 6:
+Delete a record.
+It accepts the key to be deleted. That key if exists is deleted from the current file. First the record is deleted from the heap file and the btree file entry for that record is modified.
+file.Delete(new IntegerKey(key), rid);
+The deletion can be done in 2 ways as mentioned in choice 0 and choice 1; naive deletion and full deletion. This depends on the parameter we used during our BTree file creation.  
+ Full deletion is shown in below pictures.
+
+
+Choice 7:(test 1)
+Open a new file and insert n consecutive keys into it. All the records are inserted in the heap file and pages indexed in the btree.
+
+choice 8: (test 2)
+Same choice 7 but the keys are inserted in the reverse order.
+Even if the same number of keys are entered into the tree. The structure of the btree looks different from the structure in choice 7.
+
+Choice 9: (test 3)
+Same as choice 7 and 8 but here the keys are inserted in the random order.
+Again the structure of btree looks different from other choices.
+
+Choice  10:(test 4)
+Here n records are randomly inserted and m records are randomly deleted.
+
+Choice 11:
+Delete some records
+Accepts the low key value and high key value as the input. It deletes all the values between low and high key value. Deletion happens one key after the other.
+with file.delete
+
+
+Choice 12:
+Initialize Scan
+Accept Lo_key and hi_key, the key where the scanning begins and ends.
+Creates a BTFileScan object scan. This object is set with the given options. Scan has pointers to the nodes starting from the lo_key. Scan also specifies the end key.
+
+Choice 13:
+Scan the next record from the previously scanned object. This is done using the function scan.get_next().
+
+Choice 14:
+Delete the just-scanned record
+With the scan object  from previous choices, delete all the records in the object. 
+Find the page that the scan object’s head is pointing to and delete the record from the page from the file using SystemDefs.JavabaseBM.unpinPage( leafPage.getCurPage(), false);. After the delete entry in btree using bfile.delete.
+
+choice 15:
+---String Key (for choice [15]) ---insert n records in random order and delete m records randomly.
+It is same as choice10 but the difference is that here we accept string as the key choice using keyType=AttrType.attrString; 
+Once the n random string keys are generated, they are inserted one after the other in heap and btree. Similarly deletion is done.
+
+For Choice 16, 17, 18, and 19: normal operations are performed.
+
+
+Conclusion:
+_____________________________________________
+In this report, a brief description of each module and its test suite has been analyzed. 
+
+
+Choice 9
+BT.printAllLeafPages(file.getHeaderPage());
+***********Test1**********************
+
+
+
+
+Heap File
+_____________________________________________
+
+Heap file contains the records of that file. They can be stored in multiple pages. This module support for insertion, selection, updating and deletion of records. Each record is uniquely identified by a record id(page id, slot number).
+Heap file is identified by the Header file. The header file is part of the doubly linked list. One header link points to the list of allocated pages and the other header link points to the unallocated pages.
+***********Test 1*************
+This test inserts and scan records into an heap file. 
+First, 100 records of length 32 bits are inserted. Next each record is scanned to check if all the 100 records have been read as inserted with parameters correct number of records, type and file name. 
+
+
+************Test 2****************
+Here, heap file, which is already created, is opened. All the odd numbered records are deleted. Next for the remaining even numbered records, the record length, ival and fval is validated. 
+
+************Test 3*****************
+The same heap file is opened. From the existing records, scan through each one of them and update some of them by changing fval(7*i). For each of the page validate the updating.
+
+
+***********Test 4*******************
+Testing for boundary error conditions. Record size is fixed when the record is created. If the record length is increased or decreased, it throws and exception as expected. Record of length greater than the page size also throws an exception.
+
+
+IndexTest
+_____________________________________________
+Indexing the heap file helps to locate the page number of a given key. In minibase, the indexing is done using the btree. For every key, the rid(the page number and slot number) is indexed.
+
+All the tests are done on 2 arrays - One unsorted and other sorted of the same data.
+********Test1***********
+An heap file is created and all the unsorted array values are inserted into the heap file. The heap file is indexed using btree module. After indexing the btree keys are validated using the second sorted array.
+
+*********Test2**********
+The same input of test1 is used for this test too. Here we try to identify the string ‘dsilva’. The scan index is searched for the page id in the index file. If search is found, then it is validated. Second array is checked to match the sorted array.
+
+*********Test3***********
+A heap file with name, int, file. The data is initially unsorted. Now index the file on the int field. Scan in the range of 100 to 900 and check if the values are sorted.
+
+
+
+SortTest
+_____________________________________________
+
+Similar to IndexText, we use 2 arrays as input - One unsorted and other sorted array of the same data.
+
+************Test 1***********
+Create an heap file and add unsorted data of array1 to it. Scan the heap file and use fscan variable and sort the strings. Check if the sorted array is same as array2.
+
+
+************Test 2**************
+Same as test1, but here we use descending order to sort. The result is validated.
+
+
+************Test3***************
+Same as above test cases, here we use integer values to sort. Scan through values from 100 to 900 and cross verify with the sorted array.
+
+
+Join Test
+_________________________________________________
+Two types of joins; Simple Nested loop Join and Sort Merge Join.
+
+Query 1:
+Find the names of sailors who have reserved boat number 1 and print out the date of reservation.
+
+On both the relations, create a scanned object. For each tuple entry(sid) on one relation, all the tuples are scanned on the other relation. The projection is done if there is a match. The result is validated with the sort merge-join.
+
+
+Query 2 - 
+Find the names of sailors who have reserved a red boat and return them in alphabetical order.
+Sort the sailors heap file and create an index file using tree. On the indeed file perform NestedLoopJoins on relations sailors and reserves with reserves and boats.
+Project the result of the query in the ascending order.
+
+Query 3 - Find the names of sailors who have reserved a boat.
+Like before, On the relation Sailor and reserves, SortMerge join is performed. For each entry on the outer tuple, scan the inner tuple. Matching tuples are projected.
+
+Query 4 - Find the names of sailors who have reserved a boat and print each name once.
+This is same as the query 3 but duplicate tuples are eliminated.
+
+Query 5 - Find the names of old sailors or sailors with a rating less than 7, who have reserved a boat, (Perhaps to increase the amount they have to pay to make a reservation).
+Same as above queries. On the projection of matched  sort-merge join, check if the rating entry in each tuple.
+
+Query 6 - Find the names of sailors with a rating greater than who have reserved a red boat, and print them out in sorted order.
+NestedLoop join is performed on relation(sailors and reserves) and (reserves and boats). Check the rating condition and red boat condition. Sort the result in ascending order. Display the projection.
+
+
+
+
+
+
+
+Test 1 – This test creates a new database and does some tests of normal operations. Create a file with file name and start pid. Allocate a run of pages and write data on 20 of them. Deallocate the remaining 10 pages. DB maintains a space map for each page with bit “0” indicating that the page is free and “1” indicating that the page is allocated.
+ 
+Test 2 – Delete some of the file entries previously added. Read the pages from the remaining file entries and validate if the information is read correctly.
+ 
+Test 3 – This test validates some of the error conditions like look up a deleted file entry, try to delete a deleted entry again, try to delete a nonexistent file entry, look up a nonexistent file entry, try to add a file entry that's already there, try to add a file entry whose name is too long, try to allocate a run of pages that's too long, try to allocate a negative run of pages, try to deallocate a negative run of pages.
+ 
+Test 4 – This is for testing some of the boundary conditions. It is made sure that no pages are left pinned by the disk manager in the beginning of this test. All the pages are allocated after dB overhead is taken in account. Attempt to allocate one more page after this will cause an exception as expected.
+ 
+Next some of the pages are freed by deallocating by specifying the start pid and the run size. Allocate some of the just-freed pages. Next, free two continued run of the allocated pages i.e., 11-17 and 18-28. Allocate back the number of pages just freed.
+ 
+Add enough file entries that the directory must surpass a page. Try to allocate more pages than it is available which fails as expected. Allocate exactly the number of pages available which is 6. Now try to allocate one more page which fails as expected as all pages are claimed.
+
+
+Minibase is a database management system. This database system contains query parser, optimizer, buffer pool manager, storage mechanisms on the disks for heap files, secondary indexes based on B+ trees, and a disk space management system. Each of the Minibase module is transparent and can be modified.  In this report, we give an overview of the mini base modules and provide the understanding of the test.
